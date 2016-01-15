@@ -121,8 +121,8 @@ UserInput.prototype.getVariable = function(name, question, required, defaultValu
         return;
       }
       return Q().then(function() {
-        if (name == 'password' || name == 'passcode') {
-          return self.promptPassword(question);
+        if (name == 'password' || name == 'passcode' || name === 'seed') {
+          return self.promptPassword(question, !required);
         } else {
           return self.prompt(question, required);
         }
@@ -1810,6 +1810,46 @@ BGCL.prototype.handleRemoveWallet = function() {
 };
 
 BGCL.prototype.handleSendCoins = function() {
+
+  var sendTransactionWithSecret = function (wallet, txParams) {
+    const self = this
+    return wallet.sendCoins(txParams)
+    .catch(function(err) {
+      if (err.needsOTP) {
+        // unlock
+        return self.handleUnlock()
+        .then(function() {
+          // try again
+          return wallet.sendCoins(txParams);
+        });
+      } else {
+        throw err;
+      }
+    });
+  }.bind(this)
+
+  var sendTransactionWithSeed = function (wallet, txParams, seed) {
+		const keychain = this.bitgo.keychains().create ( { seed: new Buffer ( seed, 'utf-8' ) } )
+
+    if (keychain.path === undefined)
+				keychain.path = 'm'
+
+      return this.handleUnlock()
+      .then(function() {
+        return wallet.createTransaction(txParams)
+      })
+      .then( transaction => {
+          return wallet.signTransaction ( {
+				              transactionHex: transaction.transactionHex,
+				              unspents: transaction.unspents,
+				              keychain: keychain
+                    })
+      })
+      .then( signedTransaction => {
+          return wallet.sendTransaction ( { tx: signedTransaction.tx } )
+      })
+  }.bind(this)
+
   var self = this;
   var input = new UserInput(this.args);
   var satoshis;
@@ -1822,7 +1862,12 @@ BGCL.prototype.handleSendCoins = function() {
   })
   .then(input.getVariable('dest', 'Destination address: '))
   .then(input.getVariable('amount', 'Amount (in BTC): '))
-  .then(input.getVariable('password', 'Wallet password: '))
+  .then(input.getVariable('password', 'Wallet password: ', false))
+  .then( () => {
+    input.password = input.password || undefined
+    if(!input.password)
+      return input.getVariable('seed', 'Wallet seed: ')()
+  })
   .then(input.getVariable('comment', 'Optional comment: '))
   .then(function() {
     input.comment = input.comment || undefined;
@@ -1847,29 +1892,29 @@ BGCL.prototype.handleSendCoins = function() {
   })
   .then(function(wallet) {
     var satoshis = Math.floor(input.amount * 1e8);
-    var txParams = {
-      address: input.dest,
-      amount: satoshis,
-      walletPassphrase: input.password,
-      message: input.comment,
-      minConfirms: input.unconfirmed ? 0 : 1,
-      enforceMinConfirmsForChange: false
-    };
-    return wallet.sendCoins(txParams)
-    .catch(function(err) {
-      if (err.needsOTP) {
-        // unlock
-        return self.handleUnlock()
-        .then(function() {
-          // try again
-          return wallet.sendCoins(txParams);
-        });
-      } else {
-        throw err;
-      }
-    });
+    if(input.password) {
+      return sendTransactionWithSecret(wallet, {
+        address: input.dest,
+        amount: satoshis,
+        walletPassphrase: input.password,
+        message: input.comment,
+        minConfirms: input.unconfirmed ? 0 : 1,
+        enforceMinConfirmsForChange: false
+      })
+    } else if( input.seed ) {
+      return sendTransactionWithSeed(wallet, {
+        recipients: [ {address: input.dest, amount : satoshis}] ,
+        message: input.comment,
+        minConfirms: input.unconfirmed ? 0 : 1,
+        enforceMinConfirmsForChange: false
+      }, input.seed)
+    } else {
+      throw new Error('Neither password nor seed was defined');
+    }
+
   })
   .then(function(tx) {
+    console.log(JSON.stringify(tx))
     self.action('Sent transaction ' + tx.hash);
   });
 };
