@@ -357,6 +357,9 @@ BGCL.prototype.createArgumentParser = function() {
     help: 'Get list of available wallets'
   });
 
+  wallets.addArgument(['-p', '--page'], { nargs: '?', help: 'Number of page of size limit to skip' });
+  wallets.addArgument(['-l', '--limit'], { nargs: '?', help: 'Limit wallet listing result' });
+
   // wallet
   var wallet = subparsers.addParser('wallet', {
     addHelp: true,
@@ -1030,8 +1033,11 @@ BGCL.prototype.printWalletList = function(wallets) {
   console.log(rows.join('\n'));
 };
 
-BGCL.prototype.handleWallets = function(setWallet) {
+BGCL.prototype.handleWallets = function(setWallet, page, limit) {
   var self = this;
+
+  page = parseInt(page) || 0;
+  limit = parseInt(limit) || 25;
 
   // Pre-process setWallet, if provided, to determine what type it is. It
   // may be a wallet id, an index, or a wallet name.
@@ -1064,7 +1070,7 @@ BGCL.prototype.handleWallets = function(setWallet) {
     }
   };
 
-  return self.bitgo.wallets().list()
+  return self.bitgo.wallets().list({skip: page * limit, limit: limit})
   .then(function(result) {
     var wallets = result.wallets.filter(function(w) { return w.type() !== 'coinbase'; });
 
@@ -2914,7 +2920,7 @@ BGCL.prototype.runCommandHandler = function(cmd) {
     case 'otp':
       return this.handleOTP();
     case 'wallets':
-      return this.handleWallets();
+      return this.handleWallets(undefined, this.args.page, this.args.limit);
     case 'wallet':
       if (this.args.wallet) {
         return this.handleWallets(this.args.wallet)
