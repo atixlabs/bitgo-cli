@@ -1868,6 +1868,7 @@ BGCL.prototype.handleSendCoins = function() {
     if(!input.password)
       return input.getVariable('seed', 'Wallet seed: ')()
   })
+  .then(input.getVariable('txFee', 'Optional fee (default 0.0001): ', false, 0.0001))
   .then(input.getVariable('comment', 'Optional comment: '))
   .then(function() {
     input.comment = input.comment || undefined;
@@ -1881,7 +1882,7 @@ BGCL.prototype.handleSendCoins = function() {
       throw new Error('Invalid amount (non-numeric)');
     }
     var prefix = input.confirm ? 'Sending' : 'Please confirm sending';
-    self.info(prefix + ' BTC ' + self.toBTC(satoshis) + ' + 0.0001 blockchain fee to ' + input.dest + '\n');
+    self.info(prefix + ' BTC ' + self.toBTC(satoshis) + ' + ' + parseFloat(input.txFee) + ' blockchain fee to ' + input.dest + '\n');
     return input.getVariable('confirm', 'Type \'go\' to confirm: ')();
   })
   .then(function() {
@@ -1902,12 +1903,13 @@ BGCL.prototype.handleSendCoins = function() {
         enforceMinConfirmsForChange: false
       })
     } else if( input.seed ) {
-      return sendTransactionWithSeed(wallet, {
+      return sendTransactionWithSeed(wallet,{
         recipients: [ {address: input.dest, amount : satoshis}] ,
         message: input.comment,
         minConfirms: input.unconfirmed ? 0 : 1,
-        enforceMinConfirmsForChange: false
-      }, input.seed)
+        enforceMinConfirmsForChange: false,
+        fee : Math.floor(input.txFee * 1e8),
+      } , input.seed)
     } else {
       throw new Error('Neither password nor seed was defined');
     }
