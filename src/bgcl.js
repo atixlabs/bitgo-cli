@@ -3147,7 +3147,7 @@ BGCL.prototype.handleAddWhitepoliciesFromFile = function() {
           Promise.resolve( lines )
             .map( line => {
               return new Promise.delay( 2000 ).then( () => {
-                console.log('Adding address %s', line)
+                console.log( 'Adding address %s', line )
                 const policyData = {
                   'action': {
                     'type': 'deny'
@@ -3159,6 +3159,10 @@ BGCL.prototype.handleAddWhitepoliciesFromFile = function() {
                   'type': 'bitcoinAddressWhitelist'
                 }
                 return wallet.setPolicyRule( policyData )
+                  .catch( err => {
+                    console.log( err )
+                    return Promise.resolve( true )
+                  } )
               } )
             }, {
               concurrency: 1
