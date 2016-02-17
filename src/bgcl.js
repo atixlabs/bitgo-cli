@@ -19,6 +19,7 @@ var open = require( 'open' );
 var util = require( 'util' );
 var _ = require( 'lodash' );
 _.string = require( 'underscore.string' );
+var Promise = require( 'bluebird' )
 var pjson = require( '../package.json' );
 var CLI_VERSION = pjson.version;
 
@@ -833,6 +834,11 @@ BGCL.prototype.createArgumentParser = function() {
   var addWhitepolicy = subparsers.addParser( 'addWhitepolicy', {
     addHelp: true,
     help: 'Adds a whitepolicy rule to a wallet'
+  } );
+
+  var addWhitepoliciesFromFile = subparsers.addParser( 'addWhitepoliciesFromFile', {
+    addHelp: true,
+    help: 'Adds a whitepolicy rules from a file'
   } );
 
   var removeWhitepolicy = subparsers.addParser( 'removeWhitepolicy', {
@@ -3110,6 +3116,59 @@ BGCL.prototype.handleAddWhitepolicy = function() {
     } );
 };
 
+BGCL.prototype.handleAddWhitepoliciesFromFile = function() {
+  var self = this;
+  var wallet = this.session.wallet;
+  var input = new UserInput( this.args );
+
+  if ( !wallet ) {
+    throw new Error( 'No current wallet.' );
+  }
+
+  return input.getVariable( 'filename', 'Input File with addresses to add to ' + wallet.id() + ' whitelist : ', true )()
+    .then( () => {
+
+      return new Promise( function( resolve, reject ) {
+        const fs = require( 'fs' );
+        const readline = require( 'readline' );
+        const stream = require( 'stream' );
+
+        const instream = fs.createReadStream( input.filename );
+        const outstream = new stream;
+        const rl = readline.createInterface( instream, outstream );
+
+        const lines = []
+
+        rl.on( 'line', function( line ) {
+          lines.push( line );
+        } );
+
+        rl.on( 'close', function() {
+          Promise.resolve( lines )
+            .map( line => {
+              return new Promise.delay( 2000 ).then( () => {
+                console.log('Adding address %s', line)
+                const policyData = {
+                  'action': {
+                    'type': 'deny'
+                  },
+                  'condition': {
+                    'add': line
+                  },
+                  'id': wallet.id() + '-whitelist',
+                  'type': 'bitcoinAddressWhitelist'
+                }
+                return wallet.setPolicyRule( policyData )
+              } )
+            }, {
+              concurrency: 1
+            } )
+            .then( () => resolve() )
+        } );
+      } )
+    } )
+};
+
 BGCL.prototype.handleRemoveWhitepolicy = function() {
   var self = this;
   var wallet = this.session.wallet;
@@ -3121,8 +3180,10 @@ BGCL.prototype.handleRemoveWhitepolicy = function() {
 
   return input.getVariable( 'whitepolicyId', 'Whitepolicy Id to remove for ' + wallet.id() + ' : ', false, wallet.id() + '-whitelist' )()
     .then( () => {
-      console.log('Removing %s', input.whitepolicyId)
-      return wallet.deletePolicyRule ( { 'id': input.whitepolicyId } )
+      console.log( 'Removing %s', input.whitepolicyId )
+      return wallet.deletePolicyRule( {
+        'id': input.whitepolicyId
+      } )
     } )
     .then( function( result ) {
       console.dir( 'Done!' );
@@ -3445,8 +3506,10 @@ BGCL.prototype.runCommandHandler = function( cmd ) {
       return this.handleRemoveWebhook();
     case 'addWhitepolicy':
       return this.handleAddWhitepolicy();
+    case 'addWhitepoliciesFromFile':
+      return this.handleAddWhitepoliciesFromFile();
     case 'removeWhitepolicy':
-        return this.handleRemoveWhitepolicy();
+      return this.handleRemoveWhitepolicy();
     case 'util':
       return this.handleUtil();
     default:

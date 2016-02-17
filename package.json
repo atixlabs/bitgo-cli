@@ -27,6 +27,7 @@
     "argparse": "1.0.2",
     "bitcoinjs-lib": "1.5.4",
     "bitgo": "0.11.43",
+    "bluebird": "^3.3.1",
     "bs58check": "1.0.5",
     "lodash": "2.4.1",
     "moment": "2.9.0",
